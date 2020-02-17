@@ -37,7 +37,7 @@ func readLogFile(filePath string) {
 			if programs[line[4]] == nil {
 				programs[line[4]] = &Program{"-", "-", "-", 0}
 			}
-			if line[3] == "installed" {
+			if line[3] == "installed" || line[3] == "reinstalled" {
 				programs[line[4]].installed = line[0] + " " + line[1]
 				installedPackages++
 			} else if line[3] == "upgraded" {
