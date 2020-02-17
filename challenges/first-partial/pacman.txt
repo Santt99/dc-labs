@@ -1,4 +1,4 @@
-z[2019-03-22 21:21] [PACMAN] Running 'pacman -r /mnt -Sy --cachedir=/mnt/var/cache/pacman/pkg --noconfirm base'
+[2019-03-22 21:21] [PACMAN] Running 'pacman -r /mnt -Sy --cachedir=/mnt/var/cache/pacman/pkg --noconfirm base'
 [2019-03-22 21:21] [PACMAN] synchronizing package lists
 [2019-03-22 21:24] [ALPM] transaction started
 [2019-03-22 21:24] [ALPM] installed linux-api-headers (4.17.11-1)
