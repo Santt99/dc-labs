@@ -31,7 +31,7 @@ func readLogFile(filePath string) {
 		line := strings.Split(scanner.Text(), " ")
 
 		if cap(line) > 4 {
-			if line[3] != "installed" && line[3] != "upgraded" && line[3] != "removed" {
+			if line[3] != "installed" && line[3] != "upgraded" && line[3] != "removed" && line[3] != "reinstalled" {
 				continue
 			}
 			if programs[line[4]] == nil {
