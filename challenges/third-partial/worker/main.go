@@ -2,29 +2,34 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"log"
+	"math/big"
 	"net"
 	"os"
+	"strconv"
+	"strings"
+	"time"
 
-	pb "github.com/CodersSquad/dc-labs/challenges/third-partial/proto"
-	"go.nanomsg.org/mangos"
-	"go.nanomsg.org/mangos/protocol/sub"
-	"google.golang.org/grpc"
+	"nanomsg.org/go/mangos/v2"
+	"nanomsg.org/go/mangos/v2/protocol/respondent"
 
+	pb "github.com/Santt99/cool-image-processor/proto"
 	// register transports
-	_ "go.nanomsg.org/mangos/transport/all"
-)
-
-var (
-	defaultRPCPort = 50051
+	"google.golang.org/grpc"
+	_ "nanomsg.org/go/mangos/v2/transport/all"
 )
 
 // server is used to implement helloworld.GreeterServer.
 type server struct {
 	pb.UnimplementedGreeterServer
 }
+
+var (
+	defaultRPCPort = 50051
+)
 
 var (
 	controllerAddress = ""
@@ -35,6 +40,10 @@ var (
 func die(format string, v ...interface{}) {
 	fmt.Fprintln(os.Stderr, fmt.Sprintf(format, v...))
 	os.Exit(1)
+}
+
+func date() string {
+	return time.Now().Format(time.ANSIC)
 }
 
 // SayHello implements helloworld.GreeterServer
@@ -49,30 +58,21 @@ func init() {
 	flag.StringVar(&tags, "tags", "gpu,superCPU,largeMemory", "Comma-separated worker tags")
 }
 
-// joinCluster is meant to join the controller message-passing server
-func joinCluster() {
-	var sock mangos.Socket
-	var err error
-	var msg []byte
-
-	if sock, err = sub.NewSocket(); err != nil {
-		die("can't get new sub socket: %s", err.Error())
-	}
-
-	log.Printf("Connecting to controller on: %s", controllerAddress)
-	if err = sock.Dial(controllerAddress); err != nil {
-		die("can't dial on sub socket: %s", err.Error())
-	}
-	// Empty byte array effectively subscribes to everything
-	err = sock.SetOption(mangos.OptionSubscribe, []byte(""))
+func main() {
+	flag.Parse()
+	// Subscribe to Controller
+	go joinCluster()
+	// Setup Worker RPC Server
+	rpcPort := getAvailablePort()
+	log.Printf("Starting RPC Service on localhost:%v", rpcPort)
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%v", rpcPort))
 	if err != nil {
-		die("cannot subscribe: %s", err.Error())
+		log.Fatalf("failed to listen: %v", err)
 	}
-	for {
-		if msg, err = sock.Recv(); err != nil {
-			die("Cannot recv: %s", err.Error())
-		}
-		log.Printf("Message-Passing: Worker(%s): Received %s\n", workerName, string(msg))
+	s := grpc.NewServer()
+	pb.RegisterGreeterServer(s, &server{})
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
 	}
 }
 
@@ -90,22 +90,47 @@ func getAvailablePort() int {
 	return port
 }
 
-func main() {
-	flag.Parse()
-
-	// Subscribe to Controller
-	go joinCluster()
-
-	// Setup Worker RPC Server
-	rpcPort := getAvailablePort()
-	log.Printf("Starting RPC Service on localhost:%v", rpcPort)
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%v", rpcPort))
+func getIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		localAddr := "unknown"
+		return localAddr
 	}
-	s := grpc.NewServer()
-	pb.RegisterGreeterServer(s, &server{})
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+
+	defer conn.Close()
+	localAddr := strings.Split(conn.LocalAddr().(*net.UDPAddr).String(), ":")[0]
+	return localAddr
+}
+
+func joinCluster() {
+	var sock mangos.Socket
+	var err error
+	var msg []byte
+	var name = "1"
+	if sock, err = respondent.NewSocket(); err != nil {
+		die("can't get new respondent socket: %s", err.Error())
+	}
+	if err = sock.Dial(controllerAddress); err != nil {
+		die("can't dial on respondent socket: %s", err.Error())
+	}
+	for {
+		if msg, err = sock.Recv(); err != nil {
+			die("Cannot recv: %s", err.Error())
+		}
+		fmt.Printf("CLIENT(%s): RECEIVED \"%s\" SURVEY REQUEST\n",
+			name, string(msg))
+		port := getAvailablePort()
+		fmt.Printf("CLIENT(%s): SENDING DATE SURVEY RESPONSE\n", name)
+		t := time.Now()
+		tf := t.Format("2006-01-02 15:04:05-07:00")
+		usage, err := rand.Int(rand.Reader, big.NewInt(100))
+
+		if err != nil {
+			panic(err)
+		}
+		workerMetadata := workerName + "@" + tags + "@" + getIP() + "@" + strconv.Itoa(port) + "@" + tf + "@" + usage.String()
+		if err = sock.Send([]byte(workerMetadata)); err != nil {
+			die("Cannot send: %s", err.Error())
+		}
 	}
 }
